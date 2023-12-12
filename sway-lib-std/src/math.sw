@@ -196,6 +196,8 @@ impl BinaryLogarithm for u8 {
 
 #[test]
 fn u256_pow_tests() {
+    use core::codec::*;
+    
     let five = 0x0000000000000000000000000000000000000000000000000000000000000005u256;
 
     use ::assert::*;
