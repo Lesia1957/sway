@@ -4,6 +4,7 @@ library;
 use ::alias::SubId;
 use ::convert::From;
 use ::hash::*;
+use core::codec::*;
 
 /// The `ContractId` type, a struct wrapper around the inner `b256` value.
 pub struct ContractId {
