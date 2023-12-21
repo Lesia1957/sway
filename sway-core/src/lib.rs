@@ -64,6 +64,7 @@ pub mod fuel_prelude {
     pub use fuel_vm::{self, fuel_asm, fuel_crypto, fuel_tx, fuel_types};
 }
 
+pub use build_config::ExperimentalFlags;
 pub use engine_threading::Engines;
 
 /// Given an input `Arc<str>` and an optional [BuildConfig], parse the input into a [lexed::LexedProgram] and [parsed::ParseProgram].
@@ -97,6 +98,7 @@ pub fn parse(
             None,
             config.build_target,
             config.include_tests,
+            config.experimental,
         )
         .map(
             |ParsedModuleTree {
@@ -229,6 +231,7 @@ pub struct Submodule {
 pub type Submodules = Vec<Submodule>;
 
 /// Parse all dependencies `deps` as submodules.
+#[allow(clippy::too_many_arguments)]
 fn parse_submodules(
     handler: &Handler,
     engines: &Engines,
@@ -237,6 +240,7 @@ fn parse_submodules(
     module_dir: &Path,
     build_target: BuildTarget,
     include_tests: bool,
+    experimental: ExperimentalFlags,
 ) -> Submodules {
     // Assume the happy path, so there'll be as many submodules as dependencies, but no more.
     let mut submods = Vec::with_capacity(module.submodules().count());
@@ -269,6 +273,7 @@ fn parse_submodules(
             Some(submod.name.as_str()),
             build_target,
             include_tests,
+            experimental,
         ) {
             if !matches!(kind, parsed::TreeType::Library) {
                 let source_id = engines.se().get_source_id(submod_path.as_ref());
@@ -312,6 +317,7 @@ pub struct ParsedModuleTree {
 
 /// Given the source of the module along with its path,
 /// parse this module including all of its submodules.
+#[allow(clippy::too_many_arguments)]
 fn parse_module_tree(
     handler: &Handler,
     engines: &Engines,
@@ -320,6 +326,7 @@ fn parse_module_tree(
     module_name: Option<&str>,
     build_target: BuildTarget,
     include_tests: bool,
+    experimental: ExperimentalFlags,
 ) -> Result<ParsedModuleTree, ErrorEmitted> {
     let query_engine = engines.qe();
 
@@ -338,11 +345,12 @@ fn parse_module_tree(
         module_dir,
         build_target,
         include_tests,
+        experimental,
     );
 
     // Convert from the raw parsed module to the `ParseTree` ready for type-check.
     let (kind, tree) = to_parsed_lang::convert_parse_tree(
-        &mut to_parsed_lang::Context::new(build_target),
+        &mut to_parsed_lang::Context::new(build_target, experimental),
         handler,
         engines,
         module.value.clone(),
@@ -468,6 +476,8 @@ pub fn parsed_to_ast(
     build_config: Option<&BuildConfig>,
     package_name: &str,
 ) -> Result<ty::TyProgram, ErrorEmitted> {
+    let experimental = build_config.map(|x| x.experimental).unwrap_or_default();
+
     // Type check the program.
     let typed_program_opt = ty::TyProgram::type_check(
         handler,
@@ -475,6 +485,7 @@ pub fn parsed_to_ast(
         parse_program,
         initial_namespace,
         package_name,
+        build_config,
     );
 
     let mut typed_program = match typed_program_opt {
@@ -493,8 +504,10 @@ pub fn parsed_to_ast(
     };
 
     // Collect information about the types used in this program
-    let types_metadata_result = typed_program
-        .collect_types_metadata(handler, &mut CollectTypesMetadataContext::new(engines));
+    let types_metadata_result = typed_program.collect_types_metadata(
+        handler,
+        &mut CollectTypesMetadataContext::new(engines, experimental),
+    );
     let types_metadata = match types_metadata_result {
         Ok(types_metadata) => types_metadata,
         Err(e) => {
@@ -534,7 +547,12 @@ pub fn parsed_to_ast(
     );
 
     // Evaluate const declarations, to allow storage slots initialization with consts.
-    let mut ctx = Context::new(engines.se());
+    let mut ctx = Context::new(
+        engines.se(),
+        sway_ir::ExperimentalFlags {
+            new_encoding: experimental.new_encoding,
+        },
+    );
     let mut md_mgr = MetadataManager::default();
     let module = Module::new(&mut ctx, Kind::Contract);
     if let Err(e) = ir_generation::compile::compile_constants(
@@ -737,8 +755,12 @@ pub(crate) fn compile_ast_to_ir_to_asm(
     // errors and then hold as a runtime invariant that none of the types will be unresolved in the
     // IR phase.
 
-    let mut ir = match ir_generation::compile_program(program, build_config.include_tests, engines)
-    {
+    let mut ir = match ir_generation::compile_program(
+        program,
+        build_config.include_tests,
+        engines,
+        build_config.experimental,
+    ) {
         Ok(ir) => ir,
         Err(errors) => {
             let mut last = None;
