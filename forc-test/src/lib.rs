@@ -9,7 +9,7 @@ use forc_pkg as pkg;
 use fuel_abi_types::error_codes::ErrorSignal;
 use fuel_tx as tx;
 use fuel_vm::checked_transaction::builder::TransactionBuilderExt;
-use fuel_vm::{self as vm, fuel_asm, prelude::Instruction};
+use fuel_vm::{self as vm};
 use pkg::manifest::ExperimentalFlags;
 use pkg::TestPassCondition;
 use pkg::{Built, BuiltPackage};
