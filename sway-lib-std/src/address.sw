@@ -10,7 +10,6 @@ use ::error_signals::FAILED_TRANSFER_TO_ADDRESS_SIGNAL;
 use ::hash::sha256;
 use ::revert::revert;
 use ::outputs::{Output, output_amount, output_count, output_type};
-use core::codec::*;
 
 /// The `Address` type, a struct wrapper around the inner `b256` value.
 pub struct Address {
